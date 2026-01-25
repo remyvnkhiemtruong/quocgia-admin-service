@@ -42,8 +42,16 @@ const adminController = {
   // Cập nhật
   async update(req, res) {
     try {
-      // TODO: Implement update logic
-      res.json({ success: true, message: 'Updated' });
+      const { id } = req.params;
+      
+      // Kiểm tra heritage tồn tại
+      const existing = await heritageService.getById(id, 'vi');
+      if (!existing) {
+        return res.status(404).json({ success: false, error: 'Heritage not found' });
+      }
+
+      const result = await heritageService.update(id, req.body, req.files);
+      res.json({ success: true, data: result, message: 'Updated successfully' });
     } catch (error) {
       console.error('Update error:', error);
       res.status(500).json({ success: false, error: error.message });
