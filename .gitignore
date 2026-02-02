@@ -1,2 +1,10 @@
 .env
 node_modules
+
+src/uploads/audio/*
+src/uploads/images/*
+src/uploads/gallery/*
+
+!src/uploads/audio/.gitkeep
+!src/uploads/images/.gitkeep
+!src/uploads/gallery/.gitkeep
