@@ -8,16 +8,16 @@ services:
     container_name: heritage_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: heritage_user
-      POSTGRES_PASSWORD: heritage_pass_123
-      POSTGRES_DB: heritage_db
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U heritage_user -d heritage_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,13 +29,13 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - BASE_URL=https://adm.gddpcamau.io.vn
-      - NODE_ENV=development
-      - DB_HOST=postgres
+      - BASE_URL=${BASE_URL}
+      - NODE_ENV=${NODE_ENV}
+      - DB_HOST=${DB_HOST}
       - DB_PORT=5432
-      - DB_USER=heritage_user
-      - DB_PASSWORD=heritage_pass_123
-      - DB_NAME=heritage_db
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
     volumes:
       - ./uploads:/app/uploads    # Mount thư mục uploads
     depends_on:

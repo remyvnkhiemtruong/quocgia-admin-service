@@ -5,14 +5,21 @@ const ttsService = require('./tts.service');
 const { SUPPORTED_LANGUAGES } = require('../utils/constants');
 const fs = require('fs').promises;
 const path = require('path');
-const BASE_URL = process.env.BASE_URL || 'https://adm.gddpcamau.io.vn';
+const BASE_URL = process.env.BASE_URL;
+
 class HeritageService {
   // Tạo di sản mới + dịch + tạo audio cho 4 ngôn ngữ
   async create(data, files) {
     const {
       name, information, year_built, year_ranked, ranking_type,
-      address, commune, district, province, notes, input_lang = 'vi'
+      address, commune, district, province, notes, input_lang = 'vi',
+      youtube_links = [] // Array of YouTube links
     } = data;
+
+    // Parse youtube_links if it's a string
+    const parsedYoutubeLinks = typeof youtube_links === 'string' 
+      ? JSON.parse(youtube_links) 
+      : youtube_links;
 
     // 1. Insert heritage
     const heritageResult = await db.query(
@@ -28,12 +35,39 @@ class HeritageService {
     const heritageId = heritageResult.rows[0].id;
     console.log(`[Heritage] Created ID: ${heritageId}`);
 
+    // 2. Insert multiple images (gallery)
+    if (files?.gallery && files.gallery.length > 0) {
+      for (let i = 0; i < files.gallery.length; i++) {
+        const imageUrl = `/uploads/gallery/${files.gallery[i].filename}`;
+        await db.query(
+          `INSERT INTO heritage_media (heritage_id, media_type, media_url, display_order)
+           VALUES ($1, $2, $3, $4)`,
+          [heritageId, 'image', imageUrl, i]
+        );
+      }
+      console.log(`[Heritage] Added ${files.gallery.length} gallery images`);
+    }
+
+    // 3. Insert YouTube links
+    if (parsedYoutubeLinks && parsedYoutubeLinks.length > 0) {
+      for (let i = 0; i < parsedYoutubeLinks.length; i++) {
+        const link = parsedYoutubeLinks[i];
+        if (link && link.trim()) {
+          await db.query(
+            `INSERT INTO heritage_media (heritage_id, media_type, media_url, display_order)
+             VALUES ($1, $2, $3, $4)`,
+            [heritageId, 'youtube', link.trim(), files?.gallery?.length || 0 + i]
+          );
+        }
+      }
+      console.log(`[Heritage] Added ${parsedYoutubeLinks.length} YouTube links`);
+    }
 
     const uploadedAudioPath = files?.audio?.[0]?.filename
       ? `/uploads/audio/${files.audio[0].filename}`
       : null;
 
-    // 2. Xử lý tất cả 4 ngôn ngữ
+    // 4. Xử lý tất cả 4 ngôn ngữ
     for (const lang of SUPPORTED_LANGUAGES) {
       try {
         let translatedName = name;
@@ -88,8 +122,18 @@ class HeritageService {
     const {
       name, information, year_built, year_ranked, ranking_type,
       address, commune, district, province, notes, input_lang = 'vi',
-      regenerate_translations = false // Option để tạo lại bản dịch
+      regenerate_translations = false, // Option để tạo lại bản dịch
+      youtube_links = [], // Array of YouTube links
+      keep_media_ids = [] // Array of media IDs to keep (for managing deletions)
     } = data;
+
+    // Parse arrays if they're strings
+    const parsedYoutubeLinks = typeof youtube_links === 'string' 
+      ? JSON.parse(youtube_links) 
+      : youtube_links;
+    const parsedKeepMediaIds = typeof keep_media_ids === 'string'
+      ? JSON.parse(keep_media_ids)
+      : keep_media_ids;
 
     // 1. Lấy thông tin cũ
     const oldHeritage = await db.query('SELECT * FROM heritages WHERE id = $1', [id]);
@@ -126,7 +170,81 @@ class HeritageService {
     );
     console.log(`[Heritage] Updated ID: ${id}`);
 
-    // 4. Kiểm tra xem có cần cập nhật translations không
+    // 4. Handle media deletion (images and videos not in keep list)
+    if (parsedKeepMediaIds && parsedKeepMediaIds.length > 0) {
+      const mediaToDelete = await db.query(
+        `SELECT id, media_type, media_url FROM heritage_media 
+         WHERE heritage_id = $1 AND id NOT IN (${parsedKeepMediaIds.map((_, i) => `$${i + 2}`).join(',')})`,
+        [id, ...parsedKeepMediaIds]
+      );
+
+      for (const media of mediaToDelete.rows) {
+        // Delete file if it's an image
+        if (media.media_type === 'image') {
+          try {
+            await fs.unlink(path.join(__dirname, '../..', media.media_url));
+            console.log(`[Update] Deleted media file: ${media.media_url}`);
+          } catch (e) {
+            console.error(`[Update] Failed to delete media: ${e.message}`);
+          }
+        }
+      }
+
+      // Delete from database
+      await db.query(
+        `DELETE FROM heritage_media 
+         WHERE heritage_id = $1 AND id NOT IN (${parsedKeepMediaIds.map((_, i) => `$${i + 2}`).join(',')})`,
+        [id, ...parsedKeepMediaIds]
+      );
+      console.log(`[Update] Cleaned up media not in keep list`);
+    }
+
+    // 5. Add new gallery images
+    if (files?.gallery && files.gallery.length > 0) {
+      const maxOrderResult = await db.query(
+        'SELECT COALESCE(MAX(display_order), -1) as max_order FROM heritage_media WHERE heritage_id = $1',
+        [id]
+      );
+      let nextOrder = maxOrderResult.rows[0].max_order + 1;
+
+      for (const file of files.gallery) {
+        const imageUrl = `/uploads/gallery/${file.filename}`;
+        await db.query(
+          `INSERT INTO heritage_media (heritage_id, media_type, media_url, display_order)
+           VALUES ($1, $2, $3, $4)`,
+          [id, 'image', imageUrl, nextOrder++]
+        );
+      }
+      console.log(`[Update] Added ${files.gallery.length} new gallery images`);
+    }
+
+    // 6. Add new YouTube links
+    if (parsedYoutubeLinks && parsedYoutubeLinks.length > 0) {
+      // Delete old YouTube links first
+      await db.query(
+        'DELETE FROM heritage_media WHERE heritage_id = $1 AND media_type = $2',
+        [id, 'youtube']
+      );
+
+      const maxOrderResult = await db.query(
+        'SELECT COALESCE(MAX(display_order), -1) as max_order FROM heritage_media WHERE heritage_id = $1',
+        [id]
+      );
+      let nextOrder = maxOrderResult.rows[0].max_order + 1;
+
+      for (const link of parsedYoutubeLinks) {
+        if (link && link.trim()) {
+          await db.query(
+            `INSERT INTO heritage_media (heritage_id, media_type, media_url, display_order)
+             VALUES ($1, $2, $3, $4)`,
+            [id, 'youtube', link.trim(), nextOrder++]
+          );
+        }
+      }
+      console.log(`[Update] Updated YouTube links`);
+    }
+
+    // 7. Kiểm tra xem có cần cập nhật translations không
     const oldTranslation = await db.query(
       'SELECT name, information FROM heritage_translations WHERE heritage_id = $1 AND lang = $2',
       [id, input_lang]
@@ -136,12 +254,12 @@ class HeritageService {
     const infoChanged = oldTranslation.rows[0]?.information !== information;
     const shouldRegenerate = regenerate_translations === 'true' || regenerate_translations === true;
 
-    // 5. Xử lý audio upload mới
+    // 8. Xử lý audio upload mới
     const uploadedAudioPath = files?.audio?.[0]?.filename
       ? `/uploads/audio/${files.audio[0].filename}`
       : null;
 
-    // 6. Cập nhật translations
+    // 9. Cập nhật translations
     if (nameChanged || infoChanged || shouldRegenerate) {
       console.log(`[Update] Content changed or regenerate requested, updating translations...`);
 
@@ -236,11 +354,35 @@ class HeritageService {
     const countResult = await db.query('SELECT COUNT(*) FROM heritages');
     const total = parseInt(countResult.rows[0].count);
 
+    // Get media count for each heritage
+    const heritageIds = result.rows.map(row => row.id);
+    let mediaCounts = {};
+    
+    if (heritageIds.length > 0) {
+      const mediaCountResult = await db.query(
+        `SELECT heritage_id, 
+                COUNT(*) FILTER (WHERE media_type = 'image') as image_count,
+                COUNT(*) FILTER (WHERE media_type = 'youtube') as youtube_count
+         FROM heritage_media 
+         WHERE heritage_id = ANY($1)
+         GROUP BY heritage_id`,
+        [heritageIds]
+      );
+      
+      mediaCountResult.rows.forEach(row => {
+        mediaCounts[row.heritage_id] = {
+          images: parseInt(row.image_count),
+          videos: parseInt(row.youtube_count)
+        };
+      });
+    }
+
     return {
       data: result.rows.map(row => ({
         ...row,
         image_url: row.image_url ? BASE_URL + row.image_url : null,
-        audio_url: row.audio_url ? BASE_URL + row.audio_url : null
+        audio_url: row.audio_url ? BASE_URL + row.audio_url : null,
+        media_count: mediaCounts[row.id] || { images: 0, videos: 0 }
       })),
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
     };
@@ -266,13 +408,44 @@ class HeritageService {
       [id]
     );
 
+    // Lấy tất cả media (gallery images + YouTube links)
+    const mediaResult = await db.query(
+      `SELECT id, media_type, media_url, display_order
+       FROM heritage_media
+       WHERE heritage_id = $1
+       ORDER BY display_order ASC`,
+      [id]
+    );
+
     const heritage = result.rows[0];
+
+    // Separate media by type
+    const gallery = [];
+    const youtubeLinks = [];
+
+    mediaResult.rows.forEach(media => {
+      if (media.media_type === 'image') {
+        gallery.push({
+          id: media.id,
+          url: BASE_URL + media.media_url,
+          order: media.display_order
+        });
+      } else if (media.media_type === 'youtube') {
+        youtubeLinks.push({
+          id: media.id,
+          url: media.media_url,
+          order: media.display_order
+        });
+      }
+    });
 
     return {
       ...heritage,
       image_url: heritage.image_url ? BASE_URL + heritage.image_url : null,
       audio_url: heritage.audio_url ? BASE_URL + heritage.audio_url : null,
-      available_languages: langsResult.rows.map(r => r.lang)
+      available_languages: langsResult.rows.map(r => r.lang),
+      gallery: gallery,
+      youtube_links: youtubeLinks
     };
   }
 
@@ -287,8 +460,12 @@ class HeritageService {
       'SELECT image_url FROM heritages WHERE id = $1',
       [id]
     );
+    const media = await db.query(
+      'SELECT media_type, media_url FROM heritage_media WHERE heritage_id = $1',
+      [id]
+    );
 
-    // Xóa DB (cascade sẽ xóa translations)
+    // Xóa DB (cascade sẽ xóa translations và media)
     await db.query('DELETE FROM heritages WHERE id = $1', [id]);
 
     // Xóa audio files
@@ -308,6 +485,17 @@ class HeritageService {
         await fs.unlink(path.join(__dirname, '../..', heritage.rows[0].image_url));
       } catch (e) {
         console.error(`Failed to delete: ${heritage.rows[0].image_url}`);
+      }
+    }
+
+    // Xóa gallery images (YouTube links không cần xóa file)
+    for (const m of media.rows) {
+      if (m.media_type === 'image' && m.media_url) {
+        try {
+          await fs.unlink(path.join(__dirname, '../..', m.media_url));
+        } catch (e) {
+          console.error(`Failed to delete media: ${m.media_url}`);
+        }
       }
     }
 

@@ -6,8 +6,10 @@ const fs = require('fs');
 // Ensure directories exist
 const audioDir = path.join(__dirname, '../../uploads/audio');
 const imageDir = path.join(__dirname, '../../uploads/images');
+const galleryDir = path.join(__dirname, '../../uploads/gallery');
 fs.mkdirSync(audioDir, { recursive: true });
 fs.mkdirSync(imageDir, { recursive: true });
+fs.mkdirSync(galleryDir, { recursive: true });
 
 // Storage config
 const storage = multer.diskStorage({
@@ -16,6 +18,8 @@ const storage = multer.diskStorage({
       cb(null, audioDir);
     } else if (file.fieldname === 'image') {
       cb(null, imageDir);
+    } else if (file.fieldname === 'gallery') {
+      cb(null, galleryDir);
     } else {
       cb(null, path.join(__dirname, '../../uploads'));
     }
@@ -35,7 +39,7 @@ const fileFilter = (req, file, cb) => {
     // Allow audio up to 50MB (checked later by multer limit)
     cb(null, true);
 
-  } else if (file.fieldname === 'image') {
+  } else if (file.fieldname === 'image' || file.fieldname === 'gallery') {
     if (!file.mimetype.startsWith('image/')) {
       return cb(new Error('Only image files allowed'), false);
     }
