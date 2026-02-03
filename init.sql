@@ -59,6 +59,7 @@ CREATE TABLE heritage_images (
 -- Migration: Add heritage_media table for multiple images and YouTube links
 -- Run this SQL in your PostgreSQL database
 
+
 CREATE TABLE IF NOT EXISTS heritage_media (
   id SERIAL PRIMARY KEY,
   heritage_id INTEGER NOT NULL REFERENCES heritages(id) ON DELETE CASCADE,
