@@ -3,6 +3,7 @@ const db = require('../config/db');
 const translationService = require('./translation.service');
 const ttsService = require('./tts.service');
 const { SUPPORTED_LANGUAGES } = require('../utils/constants');
+const { transformJSONArrayToArray } = require('../utils/util.heritage')
 const fs = require('fs').promises;
 const path = require('path');
 const BASE_URL = process.env.BASE_URL;
@@ -13,23 +14,32 @@ class HeritageService {
     const {
       name, information, year_built, year_ranked, ranking_type,
       address, commune, district, province, notes, input_lang = 'vi',
-      youtube_links = [] // Array of YouTube links
+      youtube_links = [], // Array of YouTube links
+      coordinates, // array of lat, long
     } = data;
 
     // Parse youtube_links if it's a string
-    const parsedYoutubeLinks = typeof youtube_links === 'string' 
-      ? JSON.parse(youtube_links) 
+    const parsedYoutubeLinks = typeof youtube_links === 'string'
+      ? transformJSONArrayToArray(youtube_links)
       : youtube_links;
+
+    const parsedCoordinates = typeof coordinates === 'string'
+      ? transformJSONArrayToArray(coordinates)
+      : coordinates;
+
+    const image360Path = files?.image360?.[0]?.filename
+      ? `/uploads/image360/${files.image360[0].filename}`
+      : null;
 
     // 1. Insert heritage
     const heritageResult = await db.query(
-      `INSERT INTO heritages (year_built, year_ranked, ranking_type, address, commune, district, province, image_url, notes, original_lang)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO heritages (year_built, year_ranked, ranking_type, address, commune, district, province, image_url, notes, original_lang, image360, coordinates)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING id`,
       [
         year_built, year_ranked, ranking_type, address, commune, district, province,
         files?.image?.[0]?.filename ? `/uploads/images/${files.image[0].filename}` : null,
-        notes, input_lang
+        notes, input_lang, image360Path, parsedCoordinates
       ]
     );
     const heritageId = heritageResult.rows[0].id;
@@ -124,16 +134,21 @@ class HeritageService {
       address, commune, district, province, notes, input_lang = 'vi',
       regenerate_translations = false, // Option để tạo lại bản dịch
       youtube_links = [], // Array of YouTube links
-      keep_media_ids = [] // Array of media IDs to keep (for managing deletions)
+      keep_media_ids = [], // Array of media IDs to keep (for managing deletions)
+      image360,
+      coordinates,
     } = data;
 
     // Parse arrays if they're strings
-    const parsedYoutubeLinks = typeof youtube_links === 'string' 
-      ? JSON.parse(youtube_links) 
+    const parsedYoutubeLinks = typeof youtube_links === 'string'
+      ? JSON.parse(youtube_links)
       : youtube_links;
     const parsedKeepMediaIds = typeof keep_media_ids === 'string'
       ? JSON.parse(keep_media_ids)
       : keep_media_ids;
+    const parsedCoordinates = typeof coordinates === 'string'
+      ? transformJSONArrayToArray(coordinates)
+      : coordinates;
 
     // 1. Lấy thông tin cũ
     const oldHeritage = await db.query('SELECT * FROM heritages WHERE id = $1', [id]);
@@ -158,15 +173,29 @@ class HeritageService {
       imageUrl = `/uploads/images/${files.image[0].filename}`;
     }
 
+    // Xử lý hỉnh 360 mới
+    let newImage360 = oldData.image360;
+    if (files?.image360?.[0]?.filename) {
+      if (oldData.image360) {
+        try {
+          await fs.unlink(path.join(__dirname, '../..', oldData.image360));
+          console.log(`[Update] Deleted old image360: ${oldData.image360}`);
+        } catch (e) {
+          console.error(`[Update] Failed to delete old image360: ${e.message}`);
+        }
+      }
+      newImage360 = `/uploads/image360/${files.image360[0].filename}`;
+    }
+
     // 3. Update bảng heritages
     await db.query(
       `UPDATE heritages SET
         year_built = $1, year_ranked = $2, ranking_type = $3,
         address = $4, commune = $5, district = $6, province = $7,
-        image_url = $8, notes = $9, original_lang = $10, updated_at = NOW()
-       WHERE id = $11`,
+        image_url = $8, notes = $9, original_lang = $10, image360 = $11, coordinates = $12, updated_at = NOW()
+       WHERE id = $13`,
       [year_built, year_ranked, ranking_type, address, commune, district, province,
-        imageUrl, notes, input_lang, id]
+        imageUrl, notes, input_lang, newImage360, parsedCoordinates, id]
     );
     console.log(`[Heritage] Updated ID: ${id}`);
 
@@ -343,7 +372,7 @@ class HeritageService {
     const result = await db.query(
       `SELECT h.id, h.year_built, h.year_ranked, h.ranking_type,
               h.address, h.commune, h.district, h.province, h.image_url,
-              t.name, t.information, t.audio_url
+              t.name, t.information, t.audio_url, h.image360, h.coordinates
        FROM heritages h
        LEFT JOIN heritage_translations t ON h.id = t.heritage_id AND t.lang = $1
        ORDER BY h.created_at DESC
@@ -357,7 +386,7 @@ class HeritageService {
     // Get media count for each heritage
     const heritageIds = result.rows.map(row => row.id);
     let mediaCounts = {};
-    
+
     if (heritageIds.length > 0) {
       const mediaCountResult = await db.query(
         `SELECT heritage_id, 
@@ -368,7 +397,7 @@ class HeritageService {
          GROUP BY heritage_id`,
         [heritageIds]
       );
-      
+
       mediaCountResult.rows.forEach(row => {
         mediaCounts[row.heritage_id] = {
           images: parseInt(row.image_count),
@@ -382,6 +411,7 @@ class HeritageService {
         ...row,
         image_url: row.image_url ? BASE_URL + row.image_url : null,
         audio_url: row.audio_url ? BASE_URL + row.audio_url : null,
+        image360: row.image360 ? BASE_URL + row.image360 : null,
         media_count: mediaCounts[row.id] || { images: 0, videos: 0 }
       })),
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
@@ -391,7 +421,7 @@ class HeritageService {
   // Lấy chi tiết theo ngôn ngữ
   async getById(id, lang = 'vi') {
     const result = await db.query(
-      `SELECT h.*, t.name, t.information, t.audio_url, t.lang as current_lang
+      `SELECT h.*, t.name, t.information, t.audio_url, t.lang as current_lang, h.image360, h.coordinates
        FROM heritages h
        LEFT JOIN heritage_translations t ON h.id = t.heritage_id AND t.lang = $2
        WHERE h.id = $1`,
@@ -443,6 +473,7 @@ class HeritageService {
       ...heritage,
       image_url: heritage.image_url ? BASE_URL + heritage.image_url : null,
       audio_url: heritage.audio_url ? BASE_URL + heritage.audio_url : null,
+      image360: heritage.image360 ? BASE_URL + heritage.image360 : null,
       available_languages: langsResult.rows.map(r => r.lang),
       gallery: gallery,
       youtube_links: youtubeLinks
@@ -460,6 +491,12 @@ class HeritageService {
       'SELECT image_url FROM heritages WHERE id = $1',
       [id]
     );
+
+    const image360 = await db.query(
+      'SELECT image360 FROM heritages WHERE id = $1',
+      [id]
+    );
+
     const media = await db.query(
       'SELECT media_type, media_url FROM heritage_media WHERE heritage_id = $1',
       [id]
@@ -485,6 +522,15 @@ class HeritageService {
         await fs.unlink(path.join(__dirname, '../..', heritage.rows[0].image_url));
       } catch (e) {
         console.error(`Failed to delete: ${heritage.rows[0].image_url}`);
+      }
+    }
+
+    // Xóa image360 file
+    if (image360.rows[0]?.image360) {
+      try {
+        await fs.unlink(path.join(__dirname, '../..', image360.rows[0].image360));
+      } catch (e) {
+        console.error(`Failed to delete: ${image360.rows[0].image360}`);
       }
     }
 

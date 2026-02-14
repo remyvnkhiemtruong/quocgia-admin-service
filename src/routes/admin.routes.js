@@ -10,10 +10,12 @@ const uploadFieldsMiddleware = (req, res, next) => {
   const uploader = upload.fields([
     { name: 'image', maxCount: 1 },      // Main cover image
     { name: 'audio', maxCount: 1 },      // Audio for original language
-    { name: 'gallery', maxCount: 20 }    // Gallery images (up to 20)
+    { name: 'gallery', maxCount: 20 },    // Gallery images (up to 20)
+    { name: 'image360', maxCount: 1 },
   ]);
 
   uploader(req, res, function (err) {
+    console.log(req.files)
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ message: 'File vượt quá 50MB giới hạn.' });

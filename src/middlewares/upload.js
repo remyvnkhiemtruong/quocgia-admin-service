@@ -7,9 +7,11 @@ const fs = require('fs');
 const audioDir = path.join(__dirname, '../../uploads/audio');
 const imageDir = path.join(__dirname, '../../uploads/images');
 const galleryDir = path.join(__dirname, '../../uploads/gallery');
+const image360Dir = path.join(__dirname, '../../uploads/image360');
 fs.mkdirSync(audioDir, { recursive: true });
 fs.mkdirSync(imageDir, { recursive: true });
 fs.mkdirSync(galleryDir, { recursive: true });
+fs.mkdirSync(image360Dir, { recursive: true });
 
 // Storage config
 const storage = multer.diskStorage({
@@ -20,7 +22,10 @@ const storage = multer.diskStorage({
       cb(null, imageDir);
     } else if (file.fieldname === 'gallery') {
       cb(null, galleryDir);
-    } else {
+    } else if (file.fieldname === 'image360') {
+      cb(null, image360Dir)
+    }
+    else {
       cb(null, path.join(__dirname, '../../uploads'));
     }
   },
