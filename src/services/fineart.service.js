@@ -34,13 +34,14 @@ class FineArtService {
         );
 
         const countResult = await db.query('SELECT COUNT(*) FROM fineart');
-        const total = parseInt(countResult.rows[0].count);
+        const total = parseInt(countResult.rows[0].count, 10) || 0;
 
+        const base = (BASE_URL && String(BASE_URL).trim()) ? String(BASE_URL).replace(/\/$/, '') : '';
         return {
             data: result.rows.map(row => ({
                 ...row,
                 fineart_url: row.fineart_url
-                    ? BASE_URL + row.fineart_url
+                    ? (base ? base + row.fineart_url : row.fineart_url)
                     : null
             })),
             pagination: {
@@ -62,10 +63,11 @@ class FineArtService {
 
         const fineart = result.rows[0];
 
+        const base = (BASE_URL && String(BASE_URL).trim()) ? String(BASE_URL).replace(/\/$/, '') : '';
         return {
             ...fineart,
             fineart_url: fineart.fineart_url
-                ? BASE_URL + fineart.fineart_url
+                ? (base ? base + fineart.fineart_url : fineart.fineart_url)
                 : null
         };
     }

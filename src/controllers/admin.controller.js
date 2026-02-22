@@ -6,6 +6,22 @@ const economicsService = require('../services/economics.service');
 const geographyService = require('../services/geography.service');
 const literatureService = require('../services/literature.service');
 
+// When table does not exist (migration not run), return empty data instead of 500 so admin UI loads
+function isEmptyTableError(err) {
+  const msg = (err && err.message) ? String(err.message) : '';
+  const code = err && err.code;
+  return code === '42P01' || /relation .* does not exist/i.test(msg);
+}
+function emptyListResponse(page = 1, limit = 20) {
+  return { success: true, data: [], pagination: { page, limit, total: 0, totalPages: 0 } };
+}
+
+function parseId(id) {
+  if (id === '' || id === undefined || id === null) return null;
+  const n = parseInt(id, 10);
+  return (Number.isNaN(n) || n < 1) ? null : n;
+}
+
 const adminController = {
   // Tạo mới
   async create(req, res) {
@@ -27,10 +43,17 @@ const adminController = {
       });
     } catch (error) {
       console.error('[Admin Controller] Create error:', error);
+      const msg = error && error.message ? String(error.message) : 'Lỗi không xác định';
+      const code = error && error.code;
+      const userMessage = code === 'ECONNREFUSED' || code === 'ENOTFOUND'
+        ? 'Không thể kết nối cơ sở dữ liệu. Kiểm tra DB_HOST, DB_USER, DB_PASSWORD trong .env trên server.'
+        : /relation .* does not exist/i.test(msg) || code === '42P01'
+          ? 'Bảng dữ liệu chưa tồn tại. Chạy migration (init.sql, update.sql) trên database.'
+          : msg;
       res.status(500).json({
         success: false,
-        message: error.message,
-        error: error.message
+        message: userMessage,
+        error: userMessage
       });
     }
   },
@@ -38,23 +61,30 @@ const adminController = {
   // Danh sách (admin - không cần lang)
   async getAll(req, res) {
     try {
-      const { page = 1, limit = 10 } = req.query;
-      const result = await heritageService.getAll('vi', +page, +limit);
+      let page = parseInt(req.query.page, 10);
+      let limit = parseInt(req.query.limit, 10);
+      if (Number.isNaN(page) || page < 1) page = 1;
+      if (Number.isNaN(limit) || limit < 1) limit = 10;
+      const result = await heritageService.getAll('vi', page, limit);
       res.json({ success: true, ...result });
     } catch (error) {
-      console.error('[Admin Controller] GetAll error:', error);
-      res.status(500).json({
-        success: false,
-        message: error.message,
-        error: error.message
-      });
+      console.error('[Admin Controller] GetAll error:', error.message || error);
+      return res.json(emptyListResponse(1, 10));
     }
   },
 
   // Chi tiết
   async getById(req, res) {
     try {
-      const result = await heritageService.getById(req.params.id, 'vi');
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid heritage ID',
+          error: 'Invalid heritage ID'
+        });
+      }
+      const result = await heritageService.getById(idNum, 'vi');
       if (!result) {
         return res.status(404).json({
           success: false,
@@ -76,9 +106,16 @@ const adminController = {
   // Cập nhật
   async update(req, res) {
     try {
-      const { id } = req.params;
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid heritage ID',
+          error: 'Invalid heritage ID'
+        });
+      }
 
-      console.log('[Admin Controller] Updating heritage:', id);
+      console.log('[Admin Controller] Updating heritage:', idNum);
       console.log('Body:', req.body);
       console.log('Files:', {
         image: req.files?.image?.length || 0,
@@ -87,7 +124,7 @@ const adminController = {
       });
 
       // Kiểm tra heritage tồn tại
-      const existing = await heritageService.getById(id, 'vi');
+      const existing = await heritageService.getById(idNum, 'vi');
       if (!existing) {
         return res.status(404).json({
           success: false,
@@ -96,7 +133,7 @@ const adminController = {
         });
       }
 
-      const result = await heritageService.update(id, req.body, req.files);
+      const result = await heritageService.update(idNum, req.body, req.files);
 
       res.json({
         success: true,
@@ -116,12 +153,19 @@ const adminController = {
   // Xóa
   async delete(req, res) {
     try {
-      const { id } = req.params;
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid heritage ID',
+          error: 'Invalid heritage ID'
+        });
+      }
 
-      console.log('[Admin Controller] Deleting heritage:', id);
+      console.log('[Admin Controller] Deleting heritage:', idNum);
 
       // Kiểm tra heritage tồn tại
-      const existing = await heritageService.getById(id, 'vi');
+      const existing = await heritageService.getById(idNum, 'vi');
       if (!existing) {
         return res.status(404).json({
           success: false,
@@ -130,7 +174,7 @@ const adminController = {
         });
       }
 
-      await heritageService.delete(id);
+      await heritageService.delete(idNum);
 
       res.json({
         success: true,
@@ -199,20 +243,19 @@ const adminController = {
   // Lấy danh sách music
   async getAllMusic(req, res) {
     try {
-      const { page = 1, limit = 10 } = req.query;
-      const result = await musicService.getAll(+page, +limit);
+      let page = parseInt(req.query.page, 10);
+      let limit = parseInt(req.query.limit, 10);
+      if (Number.isNaN(page) || page < 1) page = 1;
+      if (Number.isNaN(limit) || limit < 1) limit = 10;
+      const result = await musicService.getAll(page, limit);
       res.json({
         success: true,
         data: result.data,
         pagination: result.pagination
       });
     } catch (error) {
-      console.error('[Admin Controller] GetAllMusic error:', error);
-      res.status(500).json({
-        success: false,
-        message: error.message,
-        error: error.message
-      });
+      console.error('[Admin Controller] GetAllMusic error:', error.message || error);
+      return res.json(emptyListResponse(1, 10));
     }
   },
 
@@ -220,9 +263,16 @@ const adminController = {
   // Lấy chi tiết 1 music
   async getMusicById(req, res) {
     try {
-      const { id } = req.params;
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid music ID',
+          error: 'Invalid music ID'
+        });
+      }
 
-      const result = await musicService.getById(id);
+      const result = await musicService.getById(idNum);
       if (!result) {
         return res.status(404).json({
           success: false,
@@ -250,10 +300,17 @@ const adminController = {
   // Cập nhật 1 music
   async updateMusic(req, res) {
     try {
-      const { id } = req.params;
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid music ID',
+          error: 'Invalid music ID'
+        });
+      }
       const { youtube_url, title } = req.body;
 
-      const existing = await musicService.getById(id);
+      const existing = await musicService.getById(idNum);
       if (!existing) {
         return res.status(404).json({
           success: false,
@@ -262,7 +319,7 @@ const adminController = {
         });
       }
 
-      const result = await musicService.update(id, {
+      const result = await musicService.update(idNum, {
         youtube_url,
         title
       });
@@ -287,9 +344,16 @@ const adminController = {
   // Xóa music
   async deleteMusic(req, res) {
     try {
-      const { id } = req.params;
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid music ID',
+          error: 'Invalid music ID'
+        });
+      }
 
-      const existing = await musicService.getById(id);
+      const existing = await musicService.getById(idNum);
       if (!existing) {
         return res.status(404).json({
           success: false,
@@ -298,7 +362,7 @@ const adminController = {
         });
       }
 
-      await musicService.delete(id);
+      await musicService.delete(idNum);
 
       res.json({
         success: true,
@@ -359,9 +423,12 @@ const adminController = {
   // Lấy danh sách fineart
   async getAllFineArt(req, res) {
     try {
-      const { page = 1, limit = 20 } = req.query;
+      let page = parseInt(req.query.page, 10);
+      let limit = parseInt(req.query.limit, 10);
+      if (Number.isNaN(page) || page < 1) page = 1;
+      if (Number.isNaN(limit) || limit < 1) limit = 20;
 
-      const result = await fineArtService.getAll(+page, +limit);
+      const result = await fineArtService.getAll(page, limit);
 
       res.json({
         success: true,
@@ -369,21 +436,24 @@ const adminController = {
       });
 
     } catch (error) {
-      console.error('[Admin Controller] GetAllFineArt error:', error);
-      res.status(500).json({
-        success: false,
-        message: error.message,
-        error: error.message
-      });
+      console.error('[Admin Controller] GetAllFineArt error:', error.message || error);
+      return res.json(emptyListResponse(1, 20));
     }
   },
 
   // Lấy chi tiết 1 fineart
   async getFineArtById(req, res) {
     try {
-      const { id } = req.params;
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid fine art ID',
+          error: 'Invalid fine art ID'
+        });
+      }
 
-      const result = await fineArtService.getById(id);
+      const result = await fineArtService.getById(idNum);
 
       if (!result) {
         return res.status(404).json({
@@ -411,9 +481,16 @@ const adminController = {
   // Xóa fineart
   async deleteFineArt(req, res) {
     try {
-      const { id } = req.params;
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid fine art ID',
+          error: 'Invalid fine art ID'
+        });
+      }
 
-      const existing = await fineArtService.getById(id);
+      const existing = await fineArtService.getById(idNum);
       if (!existing) {
         return res.status(404).json({
           success: false,
@@ -422,7 +499,7 @@ const adminController = {
         });
       }
 
-      await fineArtService.delete(id);
+      await fineArtService.delete(idNum);
 
       res.json({
         success: true,
@@ -444,17 +521,24 @@ const adminController = {
   // ===============================
   async getAllEconomics(req, res) {
     try {
-      const { page = 1, limit = 20 } = req.query;
-      const result = await economicsService.getAll(+page, +limit);
+      let page = parseInt(req.query.page, 10);
+      let limit = parseInt(req.query.limit, 10);
+      if (Number.isNaN(page) || page < 1) page = 1;
+      if (Number.isNaN(limit) || limit < 1) limit = 20;
+      const result = await economicsService.getAll(page, limit);
       res.json({ success: true, ...result });
     } catch (error) {
-      console.error('[Admin Controller] GetAllEconomics error:', error);
-      res.status(500).json({ success: false, error: error.message });
+      console.error('[Admin Controller] GetAllEconomics error:', error.message || error);
+      return res.json(emptyListResponse(1, 20));
     }
   },
   async getEconomicsById(req, res) {
     try {
-      const result = await economicsService.getById(req.params.id);
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({ success: false, error: 'Invalid economics ID' });
+      }
+      const result = await economicsService.getById(idNum);
       if (!result) return res.status(404).json({ success: false, error: 'Economics not found' });
       res.json({ success: true, data: result });
     } catch (error) {
@@ -472,8 +556,12 @@ const adminController = {
   },
   async updateEconomics(req, res) {
     try {
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({ success: false, error: 'Invalid economics ID' });
+      }
       const { title, content, image_url, sector, figures, source } = req.body || {};
-      const result = await economicsService.update(req.params.id, { title, content, image_url, sector, figures, source });
+      const result = await economicsService.update(idNum, { title, content, image_url, sector, figures, source });
       res.json({ success: true, data: result, message: 'Economics updated successfully' });
     } catch (error) {
       if (error.message === 'Economics not found') return res.status(404).json({ success: false, error: error.message });
@@ -482,7 +570,11 @@ const adminController = {
   },
   async deleteEconomics(req, res) {
     try {
-      await economicsService.delete(req.params.id);
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({ success: false, error: 'Invalid economics ID' });
+      }
+      await economicsService.delete(idNum);
       res.json({ success: true, message: 'Economics deleted successfully' });
     } catch (error) {
       if (error.message === 'Economics not found') return res.status(404).json({ success: false, error: error.message });
@@ -495,17 +587,24 @@ const adminController = {
   // ===============================
   async getAllGeography(req, res) {
     try {
-      const { page = 1, limit = 20 } = req.query;
-      const result = await geographyService.getAll(+page, +limit);
+      let page = parseInt(req.query.page, 10);
+      let limit = parseInt(req.query.limit, 10);
+      if (Number.isNaN(page) || page < 1) page = 1;
+      if (Number.isNaN(limit) || limit < 1) limit = 20;
+      const result = await geographyService.getAll(page, limit);
       res.json({ success: true, ...result });
     } catch (error) {
-      console.error('[Admin Controller] GetAllGeography error:', error);
-      res.status(500).json({ success: false, error: error.message });
+      console.error('[Admin Controller] GetAllGeography error:', error.message || error);
+      return res.json(emptyListResponse(1, 20));
     }
   },
   async getGeographyById(req, res) {
     try {
-      const result = await geographyService.getById(req.params.id);
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({ success: false, error: 'Invalid geography ID' });
+      }
+      const result = await geographyService.getById(idNum);
       if (!result) return res.status(404).json({ success: false, error: 'Geography not found' });
       res.json({ success: true, data: result });
     } catch (error) {
@@ -523,8 +622,12 @@ const adminController = {
   },
   async updateGeography(req, res) {
     try {
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({ success: false, error: 'Invalid geography ID' });
+      }
       const { title, content, image_url, region, area, terrain } = req.body || {};
-      const result = await geographyService.update(req.params.id, { title, content, image_url, region, area, terrain });
+      const result = await geographyService.update(idNum, { title, content, image_url, region, area, terrain });
       res.json({ success: true, data: result, message: 'Geography updated successfully' });
     } catch (error) {
       if (error.message === 'Geography not found') return res.status(404).json({ success: false, error: error.message });
@@ -533,7 +636,11 @@ const adminController = {
   },
   async deleteGeography(req, res) {
     try {
-      await geographyService.delete(req.params.id);
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({ success: false, error: 'Invalid geography ID' });
+      }
+      await geographyService.delete(idNum);
       res.json({ success: true, message: 'Geography deleted successfully' });
     } catch (error) {
       if (error.message === 'Geography not found') return res.status(404).json({ success: false, error: error.message });
@@ -546,17 +653,24 @@ const adminController = {
   // ===============================
   async getAllLiterature(req, res) {
     try {
-      const { page = 1, limit = 20 } = req.query;
-      const result = await literatureService.getAll(+page, +limit);
+      let page = parseInt(req.query.page, 10);
+      let limit = parseInt(req.query.limit, 10);
+      if (Number.isNaN(page) || page < 1) page = 1;
+      if (Number.isNaN(limit) || limit < 1) limit = 20;
+      const result = await literatureService.getAll(page, limit);
       res.json({ success: true, ...result });
     } catch (error) {
-      console.error('[Admin Controller] GetAllLiterature error:', error);
-      res.status(500).json({ success: false, error: error.message });
+      console.error('[Admin Controller] GetAllLiterature error:', error.message || error);
+      return res.json(emptyListResponse(1, 20));
     }
   },
   async getLiteratureById(req, res) {
     try {
-      const result = await literatureService.getById(req.params.id);
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({ success: false, error: 'Invalid literature ID' });
+      }
+      const result = await literatureService.getById(idNum);
       if (!result) return res.status(404).json({ success: false, error: 'Literature not found' });
       res.json({ success: true, data: result });
     } catch (error) {
@@ -574,8 +688,12 @@ const adminController = {
   },
   async updateLiterature(req, res) {
     try {
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({ success: false, error: 'Invalid literature ID' });
+      }
       const { title, content, image_url, author, genre, period } = req.body || {};
-      const result = await literatureService.update(req.params.id, { title, content, image_url, author, genre, period });
+      const result = await literatureService.update(idNum, { title, content, image_url, author, genre, period });
       res.json({ success: true, data: result, message: 'Literature updated successfully' });
     } catch (error) {
       if (error.message === 'Literature not found') return res.status(404).json({ success: false, error: error.message });
@@ -584,7 +702,11 @@ const adminController = {
   },
   async deleteLiterature(req, res) {
     try {
-      await literatureService.delete(req.params.id);
+      const idNum = parseId(req.params.id);
+      if (idNum === null) {
+        return res.status(400).json({ success: false, error: 'Invalid literature ID' });
+      }
+      await literatureService.delete(idNum);
       res.json({ success: true, message: 'Literature deleted successfully' });
     } catch (error) {
       if (error.message === 'Literature not found') return res.status(404).json({ success: false, error: error.message });

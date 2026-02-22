@@ -28,6 +28,14 @@ class HeritageService {
       ? transformJSONArrayToArray(coordinates)
       : coordinates;
 
+    const toInt = (v) => {
+      if (v === '' || v === undefined || v === null) return null;
+      const n = parseInt(v, 10);
+      return Number.isNaN(n) ? null : n;
+    };
+    const safeYearBuilt = toInt(year_built);
+    const safeYearRanked = toInt(year_ranked);
+
     const image360Path = files?.image360?.[0]?.filename
       ? `/uploads/image360/${files.image360[0].filename}`
       : null;
@@ -42,7 +50,7 @@ class HeritageService {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING id`,
       [
-        year_built, year_ranked, ranking_type, address, commune, district, province,
+        safeYearBuilt, safeYearRanked, ranking_type, address, commune, district, province,
         files?.image?.[0]?.filename ? `/uploads/images/${files.image[0].filename}` : null,
         notes, input_lang, image360Path, parsedCoordinates, category, musicAudioPath
       ]
@@ -155,6 +163,14 @@ class HeritageService {
       ? transformJSONArrayToArray(coordinates)
       : coordinates;
 
+    const toInt = (v) => {
+      if (v === '' || v === undefined || v === null) return null;
+      const n = parseInt(v, 10);
+      return Number.isNaN(n) ? null : n;
+    };
+    const safeYearBuilt = toInt(year_built);
+    const safeYearRanked = toInt(year_ranked);
+
     // 1. Lấy thông tin cũ
     const oldHeritage = await db.query('SELECT * FROM heritages WHERE id = $1', [id]);
     if (oldHeritage.rows.length === 0) {
@@ -212,7 +228,7 @@ class HeritageService {
         address = $4, commune = $5, district = $6, province = $7,
         image_url = $8, notes = $9, original_lang = $10, image360 = $11, coordinates = $12, category = $13, music_audio_url = $14, updated_at = NOW()
        WHERE id = $15`,
-      [year_built, year_ranked, ranking_type, address, commune, district, province,
+      [safeYearBuilt, safeYearRanked, ranking_type, address, commune, district, province,
         imageUrl, notes, input_lang, newImage360, parsedCoordinates, category, newMusicAudioUrl, id]
     );
     console.log(`[Heritage] Updated ID: ${id}`);
@@ -425,7 +441,7 @@ class HeritageService {
     );
 
     const countResult = await db.query('SELECT COUNT(*) FROM heritages');
-    const total = parseInt(countResult.rows[0].count);
+    const total = parseInt(countResult.rows[0].count, 10) || 0;
 
     // Get media count for each heritage
     const heritageIds = result.rows.map(row => row.id);
@@ -444,22 +460,25 @@ class HeritageService {
 
       mediaCountResult.rows.forEach(row => {
         mediaCounts[row.heritage_id] = {
-          images: parseInt(row.image_count),
-          videos: parseInt(row.youtube_count)
+          images: parseInt(row.image_count, 10) || 0,
+          videos: parseInt(row.youtube_count, 10) || 0
         };
       });
     }
 
+    const base = (BASE_URL && String(BASE_URL).trim()) ? String(BASE_URL).replace(/\/$/, '') : '';
+    const prefix = (url) => (url && base ? base + url : url || null);
+
     return {
       data: result.rows.map(row => ({
         ...row,
-        image_url: row.image_url ? BASE_URL + row.image_url : null,
-        audio_url: row.audio_url ? BASE_URL + row.audio_url : null,
-        image360: row.image360 ? BASE_URL + row.image360 : null,
-        music_audio_url: row.music_audio_url ? BASE_URL + row.music_audio_url : null,
+        image_url: prefix(row.image_url),
+        audio_url: prefix(row.audio_url),
+        image360: prefix(row.image360),
+        music_audio_url: prefix(row.music_audio_url),
         media_count: mediaCounts[row.id] || { images: 0, videos: 0 }
       })),
-      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+      pagination: { page, limit, total, totalPages: limit > 0 ? Math.ceil(total / limit) : 0 }
     };
   }
 
