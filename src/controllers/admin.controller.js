@@ -1,8 +1,8 @@
 // src/controllers/admin.controller.js
-const { link } = require('../routes/admin.routes');
 const heritageService = require('../services/heritage.service');
 const musicService = require('../services/music.service');
-const fineArtService = require('../services/fineart.service')
+const fineArtService = require('../services/fineart.service');
+const economicService = require('../services/economic.service');
 
 const adminController = {
   // Tạo mới
@@ -412,6 +412,170 @@ const adminController = {
     }
   },
 
+  // ===============================
+  // ECONOMICS MANAGEMENT
+  // ===============================
+
+  // Create economic data
+  async createEconomic(req, res) {
+    try {
+      console.log('[Admin Controller] Creating economic data...');
+      console.log('Body:', req.body);
+
+      const {
+        title,
+        sector,
+        content,
+        analysis_text,
+        source,
+        distributions = []
+      } = req.body;
+
+      if (!title || !sector || !content) {
+        return res.status(400).json({
+          success: false,
+          error: 'title, sector, content là bắt buộc'
+        });
+      }
+
+      if (!Array.isArray(distributions)) {
+        return res.status(400).json({
+          success: false,
+          error: 'distributions phải là một mảng'
+        });
+      }
+
+      const result = await economicService.create(req.body);
+
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: 'Economic data created successfully'
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] CreateEconomic error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  // Get all economic data (admin)
+  async getAllEconomic(req, res) {
+    try {
+      const { page = 1, limit = 10, sector } = req.query;
+
+      const result = await economicService.getAll({
+        page: +page,
+        limit: +limit,
+        sector
+      });
+
+      res.json({
+        success: true,
+        ...result
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] GetAllEconomic error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  // Get economic data by ID
+  async getEconomicById(req, res) {
+    try {
+      const { id } = req.params;
+
+      const result = await economicService.getById(id);
+
+      if (!result) {
+        return res.status(404).json({
+          success: false,
+          error: 'Economic data not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: result
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] GetEconomicById error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  // Update economic data
+  async updateEconomic(req, res) {
+    try {
+      const { id } = req.params;
+      console.log('[Admin Controller] Updating economic data:', id);
+      console.log('Body:', req.body);
+
+      const existing = await economicService.getById(id);
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          error: 'Economic data not found'
+        });
+      }
+
+      const result = await economicService.update(id, req.body);
+
+      res.json({
+        success: true,
+        data: result,
+        message: 'Economic data updated successfully'
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] UpdateEconomic error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  // Delete economic data
+  async deleteEconomic(req, res) {
+    try {
+      const { id } = req.params;
+      console.log('[Admin Controller] Deleting economic data:', id);
+
+      const existing = await economicService.getById(id);
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          error: 'Economic data not found'
+        });
+      }
+
+      await economicService.delete(id);
+
+      res.json({
+        success: true,
+        message: 'Economic data deleted successfully'
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] DeleteEconomic error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
 
 };
 

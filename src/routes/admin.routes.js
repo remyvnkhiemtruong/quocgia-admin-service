@@ -29,7 +29,7 @@ const uploadFieldsMiddleware = (req, res, next) => {
       return res.status(400).json({ message: err.message });
     }
 
-    next(); // ✅ continue to controller
+    next();
   });
 };
 
@@ -59,6 +59,16 @@ router.post('/fineart', uploadFieldsMiddleware, adminController.createfineArt);
 router.get('/fineart', adminController.getAllfineArt);
 router.get('/fineart/:id', adminController.getfineArtById);
 router.delete('/fineart/:id', adminController.deletefineArt);
+
+//
+// ECONOMICS ROUTES
+//
+
+router.post('/economics', adminController.createEconomic);
+router.get('/economics', adminController.getAllEconomic);
+router.get('/economics/:id', adminController.getEconomicById);
+router.put('/economics/:id', adminController.updateEconomic);
+router.delete('/economics/:id', adminController.deleteEconomic);
 
 
 module.exports = router;

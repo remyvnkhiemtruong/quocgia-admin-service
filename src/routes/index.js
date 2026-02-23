@@ -6,6 +6,7 @@ const adminRoutes = require('./admin.routes');
 const heritageRoutes = require('./heritage.routes');
 const musicRoutes = require('./music.routes')
 const fineArtRoutes = require('./fineart.routes')
+const economicRoutes = require('./economic.routes')
 const { SUPPORTED_LANGUAGES } = require('../utils/constants');
 
 // Admin routes
@@ -17,6 +18,8 @@ router.use('/heritages', heritageRoutes);
 router.use('/music', musicRoutes);
 
 router.use('/fineart', fineArtRoutes);
+
+router.use('/economics', economicRoutes);
 
 // Get supported languages
 router.get('/languages', (req, res) => {
