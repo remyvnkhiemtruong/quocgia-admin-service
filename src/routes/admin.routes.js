@@ -70,5 +70,21 @@ router.get('/economics/:id', adminController.getEconomicById);
 router.put('/economics/:id', adminController.updateEconomic);
 router.delete('/economics/:id', adminController.deleteEconomic);
 
+//
+// GEOGRAPHY ROUTES
+//
+
+router.post('/geography', adminController.createGeography);
+router.get('/geography', adminController.getAllGeography);
+router.get('/geography/:id', adminController.getGeographyById);
+router.put('/geography/:id', adminController.updateGeography);
+router.delete('/geography/:id', adminController.deleteGeography);
+
+router.post('/literature', adminController.createLiterature);
+router.get('/literature', adminController.getAllLiterature);
+router.get('/literature/:id', adminController.getLiteratureById);
+router.put('/literature/:id', adminController.updateLiterature);
+router.delete('/literature/:id', adminController.deleteLiterature);
+
 
 module.exports = router;

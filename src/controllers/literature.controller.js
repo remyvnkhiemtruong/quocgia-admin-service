@@ -1,12 +1,12 @@
 // src/controllers/music.controller.js
-const economicService = require('../services/economic.service');
+const literatureService = require('../services/literature.service');
 
-const economicController = {
+const literatureController = {
   // Danh sách 
   async getAll(req, res) {
     try {
       const { page = 1, limit = 10 } = req.query;
-      const result = await economicService.getAll(+page, +limit);
+      const result = await literatureService.getAll(+page, +limit);
       res.json(result);
     } catch (error) {
       console.error('GetAll error:', error);
@@ -17,10 +17,10 @@ const economicController = {
   // Chi tiết 
   async getById(req, res) {
     try {
-      const result = await economicService.getById(req.params.id);
+      const result = await literatureService.getById(req.params.id);
       
       if (!result) {
-        return res.status(404).json({ error: 'Economic not found' });
+        return res.status(404).json({ error: 'literature not found' });
       }
       
       res.json(result);
@@ -31,4 +31,4 @@ const economicController = {
   }
 };
 
-module.exports = economicController;
+module.exports = literatureController;

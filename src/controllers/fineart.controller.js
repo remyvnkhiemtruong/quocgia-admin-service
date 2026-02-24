@@ -20,7 +20,7 @@ const musicController = {
       const result = await fineArtService.getById(req.params.id);
       
       if (!result) {
-        return res.status(404).json({ error: 'music not found' });
+        return res.status(404).json({ error: 'FineArt not found' });
       }
       
       res.json(result);

@@ -3,6 +3,8 @@ const heritageService = require('../services/heritage.service');
 const musicService = require('../services/music.service');
 const fineArtService = require('../services/fineart.service');
 const economicService = require('../services/economic.service');
+const geographyService = require('../services/geography.service');
+const literatureService = require('../services/literature.service');
 
 const adminController = {
   // Tạo mới
@@ -576,6 +578,331 @@ const adminController = {
       });
     }
   },
+
+  // ===============================
+  // GEOGRAPHY MANAGEMENT
+  // ===============================
+
+  // Create geography
+  async createGeography(req, res) {
+    try {
+      const {
+        title,
+        region,
+        terrain,
+        area,
+        content,
+        image_url
+      } = req.body;
+
+      if (!title) {
+        return res.status(400).json({
+          success: false,
+          error: 'title là bắt buộc'
+        });
+      }
+
+      const result = await geographyService.create({
+        title,
+        region,
+        terrain,
+        area,
+        content,
+        image_url
+      });
+
+      res.status(201).json({
+        success: true,
+        data: result
+      });
+
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({
+        success: false,
+        error: err.message
+      });
+    }
+  },
+
+  // Get all geography (admin)
+  async getAllGeography(req, res) {
+    try {
+      const { page = 1, limit = 10, terrain_type } = req.query;
+
+      const result = await geographyService.getAll({
+        page: +page,
+        limit: +limit,
+        terrain_type
+      });
+
+      res.json({
+        success: true,
+        ...result
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] GetAllGeography error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  // Get geography by ID
+  async getGeographyById(req, res) {
+    try {
+      const { id } = req.params;
+
+      const result = await geographyService.getById(id);
+
+      if (!result) {
+        return res.status(404).json({
+          success: false,
+          error: 'Geography data not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: result
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] GetGeographyById error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  // Update geography
+  async updateGeography(req, res) {
+    try {
+      const { id } = req.params;
+
+      console.log('[Admin Controller] Updating geography:', id);
+      console.log('Body:', req.body);
+
+      const existing = await geographyService.getById(id);
+
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          error: 'Geography data not found'
+        });
+      }
+
+      const result = await geographyService.update(id, req.body);
+
+      res.json({
+        success: true,
+        data: result,
+        message: 'Geography data updated successfully'
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] UpdateGeography error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  // Delete geography
+  async deleteGeography(req, res) {
+    try {
+      const { id } = req.params;
+
+      console.log('[Admin Controller] Deleting geography:', id);
+
+      const existing = await geographyService.getById(id);
+
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          error: 'Geography data not found'
+        });
+      }
+
+      await geographyService.delete(id);
+
+      res.json({
+        success: true,
+        message: 'Geography data deleted successfully'
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] DeleteGeography error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+
+  // ===============================
+  // LITERATURE MANAGEMENT
+  // ===============================
+  // Create literature
+  async createLiterature(req, res) {
+    try {
+      console.log(req.body);
+      const {
+        title,
+        author,
+        content,
+        genre,
+        period,
+        image_url,
+      } = req.body;
+
+      if (!title) {
+        return res.status(400).json({
+          success: false,
+          error: 'title là bắt buộc'
+        });
+      }
+
+      const result = await literatureService.create(req.body);
+
+      res.status(201).json({
+        success: true,
+        data: result
+      });
+
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({
+        success: false,
+        error: err.message
+      });
+    }
+  },
+
+  // Get all geography (admin)
+  async getAllLiterature(req, res) {
+    try {
+      const { page = 1, limit = 10 } = req.query;
+
+      const result = await literatureService.getAll({
+        page: +page,
+        limit: +limit,
+      });
+
+      res.json({
+        success: true,
+        ...result
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] GetAllLiterature error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  // Get geography by ID
+  async getLiteratureById(req, res) {
+    try {
+      const { id } = req.params;
+
+      const result = await literatureService.getById(id);
+
+      if (!result) {
+        return res.status(404).json({
+          success: false,
+          error: 'Literature data not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: result
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] GetLiteratureById error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  // Update geography
+  async updateLiterature(req, res) {
+    try {
+      const { id } = req.params;
+
+      console.log('[Admin Controller] Updating literature:', id);
+      console.log('Body:', req.body);
+
+      const existing = await literatureService.getById(id);
+
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          error: 'Literature data not found'
+        });
+      }
+
+      const result = await literatureService.update(id, req.body);
+
+      res.json({
+        success: true,
+        data: result,
+        message: 'Literature data updated successfully'
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] UpdateLiterature error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  // Delete literature
+  async deleteLiterature(req, res) {
+    try {
+      const { id } = req.params;
+
+      console.log('[Admin Controller] Deleting literature:', id);
+
+      const existing = await literatureService.getById(id);
+
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          error: 'literature data not found'
+        });
+      }
+
+      await literatureService.delete(id);
+
+      res.json({
+        success: true,
+        message: 'literature data deleted successfully'
+      });
+
+    } catch (error) {
+      console.error('[Admin Controller] Deleteliterature error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+
 
 };
 
